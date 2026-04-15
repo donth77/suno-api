@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { Solver } from '@2captcha/captcha-solver';
 import { paramsCoordinates } from '@2captcha/captcha-solver/dist/structs/2captcha';
 import { BrowserContext, Page, Locator, chromium, firefox } from 'rebrowser-playwright-core';
+import sparticuzChromium from '@sparticuz/chromium';
 import { createCursor, Cursor } from 'ghost-cursor-playwright';
 import { promises as fs } from 'fs';
 import path from 'node:path';
@@ -273,9 +274,23 @@ class SunoApi {
       args.push('--enable-unsafe-swiftshader',
         '--disable-gpu',
         '--disable-setuid-sandbox');
-    const browser = await this.getBrowserType().launch({
-      args,
-      headless: yn(process.env.BROWSER_HEADLESS, { default: true })
+
+    // Serverless (Vercel / AWS Lambda): no system Chromium, no
+    // @playwright/browser-chromium at runtime. Swap in @sparticuz/chromium,
+    // which ships a stripped-down Chromium binary purpose-built for these
+    // environments and provides the right launch flags + executablePath.
+    const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+    const browserType = this.getBrowserType();
+    const useSparticuz = isServerless && browserType === chromium;
+
+    const launchArgs = useSparticuz ? [...args, ...sparticuzChromium.args] : args;
+    const executablePath = useSparticuz ? await sparticuzChromium.executablePath() : undefined;
+    const headless = useSparticuz ? true : yn(process.env.BROWSER_HEADLESS, { default: true });
+
+    const browser = await browserType.launch({
+      args: launchArgs,
+      headless,
+      ...(executablePath ? { executablePath } : {}),
     });
     const context = await browser.newContext({ userAgent: this.userAgent, locale: process.env.BROWSER_LOCALE, viewport: null });
     const cookies = [];
@@ -311,26 +326,35 @@ class SunoApi {
     logger.info('CAPTCHA required. Launching browser...')
     const browser = await this.launchBrowser();
     const page = await browser.newPage();
-    await page.goto('https://suno.com/create', { referer: 'https://www.google.com/', waitUntil: 'domcontentloaded', timeout: 0 });
+    // Suno moved the simple prompt input to the landing page (`suno.com/`)
+    // in late 2024. The `/create` URL is now the advanced multi-tab editor
+    // with no `.custom-textarea`. The landing page still has
+    // `<textarea id="simple-create-textarea" class="custom-textarea">` +
+    // a nearby "Create" button — which is what we want for prompt-mode.
+    await page.goto('https://suno.com/', { referer: 'https://www.google.com/', waitUntil: 'domcontentloaded', timeout: 0 });
 
     logger.info('Waiting for Suno interface to load');
-    // await page.locator('.react-aria-GridList').waitFor({ timeout: 60000 });
     await page.waitForResponse('**/api/project/**\\?**', { timeout: 60000 }); // wait for song list API call
 
     if (this.ghostCursorEnabled)
       this.cursor = await createCursor(page);
-    
+
     logger.info('Triggering the CAPTCHA');
     try {
       await page.getByLabel('Close').click({ timeout: 2000 }); // close all popups
-      // await this.click(page, { x: 318, y: 13 });
     } catch(e) {}
 
-    const textarea = page.locator('.custom-textarea');
+    // Simple create textarea — has a stable id AND the legacy .custom-textarea
+    // class on the landing page. Prefer the id as the primary selector.
+    const textarea = page.locator('#simple-create-textarea, .custom-textarea').first();
+    await textarea.waitFor({ state: 'visible', timeout: 30000 });
     await this.click(textarea);
     await textarea.pressSequentially('Lorem ipsum', { delay: 80 });
 
-    const button = page.locator('button[aria-label="Create"]').locator('div.flex');
+    // Create button lives next to the textarea on the landing page. No
+    // aria-label anymore; match by visible text. The simple landing has
+    // exactly one, so .first() is safe.
+    const button = page.getByRole('button', { name: 'Create' }).first();
     this.click(button);
 
     const controller = new AbortController();

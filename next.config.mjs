@@ -19,6 +19,7 @@ const nextConfig = {
       'playwright-core',
       'rebrowser-playwright-core',
       '@playwright/browser-chromium',
+      '@sparticuz/chromium',
       'chromium-bidi',
       'electron',
       'ghost-cursor-playwright',
