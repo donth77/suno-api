@@ -17,6 +17,17 @@ import { NextResponse, type NextRequest } from 'next/server';
  * Leave `API_KEY` unset to disable the gate (useful locally).
  */
 
+// CORS headers are duplicated here (rather than imported from lib/utils)
+// because Next.js middleware runs on the Edge runtime which can't load
+// libs that pull in Node-only deps (pino, playwright). Keep these in
+// sync with the `corsHeaders` constant in `src/lib/utils.ts`.
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Suno-Cookie, X-API-Key',
+};
+
 export function middleware(req: NextRequest): NextResponse | undefined {
   // Only gate the API + v1 routes; let the landing page / Swagger / etc.
   // through so the deploy status check doesn't 401.
@@ -33,9 +44,14 @@ export function middleware(req: NextRequest): NextResponse | undefined {
   const provided = req.headers.get('x-api-key');
   if (provided === expected) return; // allowed
 
+  // CORS headers on the 401 so browsers surface the actual error
+  // ("invalid X-API-Key") instead of a generic "failed to fetch".
   return new NextResponse(
     JSON.stringify({ error: 'Missing or invalid X-API-Key header.' }),
-    { status: 401, headers: { 'Content-Type': 'application/json' } },
+    {
+      status: 401,
+      headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+    },
   );
 }
 
