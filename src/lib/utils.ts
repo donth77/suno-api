@@ -130,20 +130,24 @@ export const waitForRequests = (page: Page, signal: AbortSignal): Promise<void> 
 }
 
 /**
- * CORS allow-origin is read from `ALLOWED_ORIGIN` env var at module load.
- * Production deployments should set this to the exact frontend origin
- * (e.g. `https://vibez.surf`) so random internet callers can't abuse the
- * proxy and burn the 2Captcha budget. Falls back to `*` for local dev.
+ * CORS headers used on every route's OPTIONS preflight + response.
+ *
+ * We intentionally allow `*` here rather than locking to a single origin
+ * because:
+ *   (a) the real access gate is `X-API-Key`, enforced in middleware.ts
+ *       BEFORE any route logic runs, so a loose CORS policy on its own
+ *       doesn't expose anything;
+ *   (b) the allowed frontends are `vibez.surf`, `www.vibez.surf`, and
+ *       `localhost:5173` — echoing the matching Origin would require
+ *       threading a request object into every response. Not worth the
+ *       churn for the same security guarantee.
+ * Requests never carry credentials (we use an X-Suno-Cookie header, not
+ * actual cookies), so `*` is safe with respect to the CORS credentials
+ * rule.
  */
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
-
 export const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
+  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  // x-suno-cookie: custom header used by vibez.surf so each user brings
-  // their own Suno cookie instead of sharing the deployer's account.
-  // x-api-key: shared-secret gate (see middleware.ts) keeping casual
-  // abusers off the proxy.
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Suno-Cookie, X-API-Key',
 }
 

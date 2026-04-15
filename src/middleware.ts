@@ -21,12 +21,26 @@ import { NextResponse, type NextRequest } from 'next/server';
 // because Next.js middleware runs on the Edge runtime which can't load
 // libs that pull in Node-only deps (pino, playwright). Keep these in
 // sync with the `corsHeaders` constant in `src/lib/utils.ts`.
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Suno-Cookie, X-API-Key',
-};
+//
+// ALLOWED_ORIGIN is a comma-separated allowlist. The middleware echoes
+// the matching request Origin back so multiple origins work (prod +
+// localhost). A literal "*" disables the allowlist.
+const ALLOWLIST = (process.env.ALLOWED_ORIGIN || '*')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+function corsHeadersFor(reqOrigin: string): Record<string, string> {
+  const allow = ALLOWLIST.includes('*')
+    ? '*'
+    : ALLOWLIST.includes(reqOrigin) ? reqOrigin : '';
+  const base: Record<string, string> = {
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Suno-Cookie, X-API-Key',
+    'Vary': 'Origin',
+  };
+  if (allow) base['Access-Control-Allow-Origin'] = allow;
+  return base;
+}
 
 export function middleware(req: NextRequest): NextResponse | undefined {
   // Only gate the API + v1 routes; let the landing page / Swagger / etc.
@@ -50,7 +64,10 @@ export function middleware(req: NextRequest): NextResponse | undefined {
     JSON.stringify({ error: 'Missing or invalid X-API-Key header.' }),
     {
       status: 401,
-      headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+      headers: {
+        'Content-Type': 'application/json',
+        ...corsHeadersFor(req.headers.get('origin') ?? ''),
+      },
     },
   );
 }
