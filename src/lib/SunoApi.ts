@@ -326,36 +326,44 @@ class SunoApi {
     logger.info('CAPTCHA required. Launching browser...')
     const browser = await this.launchBrowser();
     const page = await browser.newPage();
-    // Suno moved the simple prompt input to the landing page (`suno.com/`)
-    // in late 2024. The `/create` URL is now the advanced multi-tab editor
-    // with no `.custom-textarea`. The landing page still has
-    // `<textarea id="simple-create-textarea" class="custom-textarea">` +
-    // a nearby "Create" button — which is what we want for prompt-mode.
-    await page.goto('https://suno.com/', { referer: 'https://www.google.com/', waitUntil: 'domcontentloaded', timeout: 0 });
+    // Go directly to /create. The landing-page Create button just
+    // navigates here anyway; cutting it out saves a step and lets us
+    // target /create's actual form directly.
+    await page.goto('https://suno.com/create', { referer: 'https://www.google.com/', waitUntil: 'domcontentloaded', timeout: 0 });
 
     logger.info('Waiting for Suno interface to load');
-    // The old `/api/project/**` response wait was `/create`-specific; the
-    // landing page never hits that endpoint. Wait for the actual element we
-    // need (the simple-create textarea) to become visible instead — same
-    // effect, works on both pages, clearer error if Suno restructures.
-    const textarea = page.locator('#simple-create-textarea, .custom-textarea').first();
+    // /create's Song Description textarea has maxlength=500. The Simple
+    // tab also has a Lyrics textarea (different maxlength) and Styles
+    // textarea (maxlength=1000). The Sound description in the Sounds tab
+    // also has maxlength=500 but is in a hidden panel so :visible filters
+    // it out. `.first()` on the visible match = Song Description prompt.
+    const textarea = page.locator('textarea[maxlength="500"]:visible').first();
     await textarea.waitFor({ state: 'visible', timeout: 60000 });
 
     if (this.ghostCursorEnabled)
       this.cursor = await createCursor(page);
 
     logger.info('Triggering the CAPTCHA');
-    try {
-      await page.getByLabel('Close').click({ timeout: 2000 }); // close all popups
-    } catch(e) {}
-    await this.click(textarea);
-    await textarea.pressSequentially('Lorem ipsum', { delay: 80 });
+    // Dismiss OneTrust cookie consent — the banner overlays the Create
+    // button and blocks the click otherwise. Try accept, fall back to
+    // reject, fall back to close; all are no-ops if the banner isn't
+    // present (e.g. cookie already set).
+    for (const sel of ['#onetrust-accept-btn-handler', '#onetrust-reject-all-handler', 'button[aria-label="Close"]']) {
+      try {
+        await page.locator(sel).click({ timeout: 2000 });
+        logger.info({ sel }, 'Dismissed consent / popup');
+        break;
+      } catch (_) {}
+    }
+    await textarea.type('Lorem ipsum', { delay: 80, timeout: 30000 });
 
-    // Create button lives next to the textarea on the landing page. No
-    // aria-label anymore; match by visible text. The simple landing has
-    // exactly one, so .first() is safe.
-    const button = page.getByRole('button', { name: 'Create' }).first();
-    this.click(button);
+    // /create's "Create song" button (aria-label changed from "Create").
+    // Typing into the textarea enables it; Playwright's click waits for
+    // enabled state. The click triggers an hCaptcha challenge which is
+    // solved via 2Captcha → browser POSTs to the generate endpoint,
+    // which our outer `page.route` interceptor captures.
+    const button = page.getByRole('button', { name: 'Create song' });
+    await button.click({ timeout: 15000 });
 
     const controller = new AbortController();
     new Promise<void>(async (resolve, reject) => {
@@ -432,13 +440,24 @@ class SunoApi {
           reject(e);
       }
     }).catch(e => {
+      // Suno uses invisible hCaptcha now: no image requests fire on the
+      // happy path, so `waitForRequests` times out. Don't close the
+      // browser on that timeout — the /api/generate/v2 route interceptor
+      // below needs the browser alive to catch the auto-submitted
+      // request. Just log and swallow.
+      if (e?.message?.includes('No hCaptcha request')) {
+        logger.info('No visible hCaptcha challenge — invisible-mode flow');
+        return;
+      }
       browser.browser()?.close();
       throw e;
     });
     return (new Promise((resolve, reject) => {
-      page.route('**/api/generate/v2/**', async (route: any) => {
+      // Widened from `/api/generate/v2/**` — Suno may have bumped to v3
+      // or another path. Match any POST that looks like a generate call.
+      page.route('**/api/generate/**', async (route: any) => {
         try {
-          logger.info('hCaptcha token received. Closing browser');
+          logger.info({ url: route.request().url() }, 'Intercepted generate POST');
           route.abort();
           browser.browser()?.close();
           controller.abort();

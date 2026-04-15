@@ -37,7 +37,12 @@ export const isPage = (target: any): target is Page => {
  */
 export const waitForRequests = (page: Page, signal: AbortSignal): Promise<void> => {
   return new Promise((resolve, reject) => {
-    const urlPattern = /^https:\/\/img[a-zA-Z0-9]*\.hcaptcha\.com\/.*$/;
+    // Suno proxies hCaptcha through their own domain now
+    // (`hcaptcha-imgs-prod.suno.com` + `hcaptcha-assets-prod.suno.com`).
+    // Match both the proxied Suno host AND the original img*.hcaptcha.com
+    // host so this works on fresh Suno and on any other site that uses
+    // vanilla hCaptcha.
+    const urlPattern = /^https:\/\/(img[a-zA-Z0-9]*\.hcaptcha\.com|hcaptcha-(imgs|assets)-prod\.suno\.com)\/.*$/;
     let timeoutHandle: NodeJS.Timeout | null = null;
     let activeRequestCount = 0;
     let requestOccurred = false;
