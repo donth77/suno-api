@@ -1,15 +1,20 @@
 import { NextResponse, NextRequest } from "next/server";
-import { cookies } from 'next/headers'
 import { sunoApi } from "@/lib/SunoApi";
-import { corsHeaders } from "@/lib/utils";
+import { corsHeaders, getCookieForRequest } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   if (req.method === 'GET') {
     try {
-
-      const limit = await (await sunoApi((await cookies()).toString())).get_credits();
+      const cookie = getCookieForRequest(req);
+      if (!cookie) {
+        return new NextResponse(JSON.stringify({ error: 'Missing Suno cookie — send your cookie as the X-Suno-Cookie header.' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      }
+      const limit = await (await sunoApi(cookie)).get_credits();
 
 
       return new NextResponse(JSON.stringify(limit), {

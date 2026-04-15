@@ -1,7 +1,6 @@
 import { NextResponse, NextRequest } from "next/server";
-import { cookies } from 'next/headers'
 import { DEFAULT_MODEL, sunoApi } from "@/lib/SunoApi";
-import { corsHeaders } from "@/lib/utils";
+import { corsHeaders, getCookieForRequest } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +10,14 @@ export async function POST(req: NextRequest) {
       const body = await req.json();
       const { prompt, make_instrumental, model, wait_audio } = body;
 
-      const audioInfo = await (await sunoApi((await cookies()).toString())).generate(
+      const cookie = getCookieForRequest(req);
+      if (!cookie) {
+        return new NextResponse(JSON.stringify({ error: 'Missing Suno cookie — send your cookie as the X-Suno-Cookie header.' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      }
+      const audioInfo = await (await sunoApi(cookie)).generate(
         prompt,
         Boolean(make_instrumental),
         model || DEFAULT_MODEL,

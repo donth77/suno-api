@@ -114,5 +114,18 @@ export const waitForRequests = (page: Page, signal: AbortSignal): Promise<void> 
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  // x-suno-cookie: custom header used by vibez.surf so each user brings
+  // their own Suno cookie instead of sharing the deployer's account.
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Suno-Cookie',
+}
+
+/**
+ * Extract the Suno cookie for the current request. Prefers the client-sent
+ * `X-Suno-Cookie` header (BYOK model — each visitor uses their own Suno
+ * account). Falls back to `SUNO_COOKIE` env var only when the header isn't
+ * present, which is convenient for local development but should be left
+ * UNSET in production so users are forced to provide their own.
+ */
+export function getCookieForRequest(req: { headers: { get(name: string): string | null } }): string {
+  return req.headers.get('x-suno-cookie') || process.env.SUNO_COOKIE || '';
 }

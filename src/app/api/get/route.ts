@@ -1,7 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { cookies } from 'next/headers';
 import { sunoApi } from '@/lib/SunoApi';
-import { corsHeaders } from '@/lib/utils';
+import { corsHeaders, getCookieForRequest } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +10,13 @@ export async function GET(req: NextRequest) {
       const url = new URL(req.url);
       const songIds = url.searchParams.get('ids');
       const page = url.searchParams.get('page');
-      const cookie = (await cookies()).toString();
+      const cookie = getCookieForRequest(req);
+      if (!cookie) {
+        return new NextResponse(JSON.stringify({ error: 'Missing Suno cookie — send your cookie as the X-Suno-Cookie header.' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      }
 
       let audioInfo = [];
       if (songIds && songIds.length > 0) {
