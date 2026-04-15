@@ -334,7 +334,12 @@ class SunoApi {
     await page.goto('https://suno.com/', { referer: 'https://www.google.com/', waitUntil: 'domcontentloaded', timeout: 0 });
 
     logger.info('Waiting for Suno interface to load');
-    await page.waitForResponse('**/api/project/**\\?**', { timeout: 60000 }); // wait for song list API call
+    // The old `/api/project/**` response wait was `/create`-specific; the
+    // landing page never hits that endpoint. Wait for the actual element we
+    // need (the simple-create textarea) to become visible instead — same
+    // effect, works on both pages, clearer error if Suno restructures.
+    const textarea = page.locator('#simple-create-textarea, .custom-textarea').first();
+    await textarea.waitFor({ state: 'visible', timeout: 60000 });
 
     if (this.ghostCursorEnabled)
       this.cursor = await createCursor(page);
@@ -343,11 +348,6 @@ class SunoApi {
     try {
       await page.getByLabel('Close').click({ timeout: 2000 }); // close all popups
     } catch(e) {}
-
-    // Simple create textarea — has a stable id AND the legacy .custom-textarea
-    // class on the landing page. Prefer the id as the primary selector.
-    const textarea = page.locator('#simple-create-textarea, .custom-textarea').first();
-    await textarea.waitFor({ state: 'visible', timeout: 30000 });
     await this.click(textarea);
     await textarea.pressSequentially('Lorem ipsum', { delay: 80 });
 
