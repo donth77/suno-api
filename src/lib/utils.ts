@@ -116,12 +116,22 @@ export const waitForRequests = (page: Page, signal: AbortSignal): Promise<void> 
   }); 
 }
 
+/**
+ * CORS allow-origin is read from `ALLOWED_ORIGIN` env var at module load.
+ * Production deployments should set this to the exact frontend origin
+ * (e.g. `https://vibez.surf`) so random internet callers can't abuse the
+ * proxy and burn the 2Captcha budget. Falls back to `*` for local dev.
+ */
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*';
+
 export const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   // x-suno-cookie: custom header used by vibez.surf so each user brings
   // their own Suno cookie instead of sharing the deployer's account.
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Suno-Cookie',
+  // x-api-key: shared-secret gate (see middleware.ts) keeping casual
+  // abusers off the proxy.
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Suno-Cookie, X-API-Key',
 }
 
 /**
