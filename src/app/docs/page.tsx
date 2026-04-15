@@ -1,4 +1,5 @@
 import React from 'react';
+import { notFound } from 'next/navigation';
 import Swagger from '../components/Swagger';
 import spec from './swagger-suno-api.json'; // 直接导入JSON文件
 import Section from '../components/Section';
@@ -6,6 +7,12 @@ import Markdown from 'react-markdown';
 
 
 export default function Docs() {
+    // Hide the Swagger UI on production deployments unless explicitly
+    // opted in. It enumerates every endpoint in the API which makes
+    // abuse discovery trivial.
+    if (process.env.NODE_ENV === 'production' && process.env.ENABLE_DOCS !== '1') {
+        notFound();
+    }
     return (
         <>
             <Section className="my-10">

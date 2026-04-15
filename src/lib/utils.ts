@@ -1,7 +1,20 @@
 import pino from "pino";
 import { Page } from "rebrowser-playwright-core";
 
-const logger = pino();
+const logger = pino({
+  redact: {
+    paths: [
+      'cookie', 'cookies', 'Cookie',
+      'token', 'currentToken', 'Authorization', 'authorization',
+      'headers["x-suno-cookie"]', 'headers["X-Suno-Cookie"]',
+      'headers["x-api-key"]',      'headers["X-API-Key"]',
+      'headers.authorization',     'headers.Authorization',
+      'headers.cookie',            'headers.Cookie',
+      '*.cookie', '*.Cookie', '*.token', '*.authorization',
+    ],
+    censor: '[REDACTED]',
+  },
+});
 
 /**
  * Pause for a specified number of seconds.
@@ -142,5 +155,37 @@ export const corsHeaders = {
  * UNSET in production so users are forced to provide their own.
  */
 export function getCookieForRequest(req: { headers: { get(name: string): string | null } }): string {
+  // In production, refuse to fall back to SUNO_COOKIE. If the operator
+  // accidentally sets it on a public deploy, every unauthenticated
+  // request would silently use their Suno account — which is how a
+  // BYOK deployment gets drained. Local dev can still rely on the env
+  // var for convenience (NODE_ENV !== 'production').
+  if (process.env.NODE_ENV === 'production' && !req.headers.get('x-suno-cookie')) {
+    return '';
+  }
   return req.headers.get('x-suno-cookie') || process.env.SUNO_COOKIE || '';
+}
+
+/**
+ * Reject prompts that are absurdly long. Suno's own UI caps the prompt
+ * field at 500 chars; anything beyond is either a typo, an attack, or a
+ * prompt-injection stunt. The browser-based generation flow is expensive
+ * (Chromium + 2Captcha), so bad inputs should fail fast before we pay.
+ */
+export const MAX_PROMPT_LENGTH = 1000;  // description-mode prompt
+export const MAX_LYRICS_LENGTH = 5000;  // custom-mode lyrics body
+export const MAX_TAGS_LENGTH   = 1000;  // style tags
+export const MAX_TITLE_LENGTH  = 200;
+export function validatePromptLength(prompt: unknown, max = MAX_PROMPT_LENGTH, name = 'prompt'): string | null {
+  if (typeof prompt !== 'string') return `${name} must be a string`;
+  if (prompt.length === 0)        return `${name} is empty`;
+  if (prompt.length > max)        return `${name} exceeds ${max} characters`;
+  return null;
+}
+/** Same but allow empty — for optional fields like `tags`, `title`. */
+export function validateOptionalLength(v: unknown, max: number, name: string): string | null {
+  if (v === undefined || v === null || v === '') return null;
+  if (typeof v !== 'string') return `${name} must be a string`;
+  if (v.length > max)        return `${name} exceeds ${max} characters`;
+  return null;
 }

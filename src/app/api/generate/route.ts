@@ -1,6 +1,6 @@
 import { NextResponse, NextRequest } from "next/server";
 import { DEFAULT_MODEL, sunoApi } from "@/lib/SunoApi";
-import { corsHeaders, getCookieForRequest } from "@/lib/utils";
+import { corsHeaders, getCookieForRequest, validatePromptLength } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +9,16 @@ export async function POST(req: NextRequest) {
     try {
       const body = await req.json();
       const { prompt, make_instrumental, model, wait_audio } = body;
+
+      // Reject oversized prompts before launching Chromium — the generate
+      // flow is expensive and bad inputs should fail fast.
+      const promptError = validatePromptLength(prompt);
+      if (promptError) {
+        return new NextResponse(JSON.stringify({ error: promptError }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        });
+      }
 
       const cookie = getCookieForRequest(req);
       if (!cookie) {

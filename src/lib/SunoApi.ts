@@ -18,7 +18,25 @@ const globalForSunoApi = global as unknown as { sunoApiCache?: Map<string, SunoA
 const cache = globalForSunoApi.sunoApiCache || new Map<string, SunoApi>();
 globalForSunoApi.sunoApiCache = cache;
 
-const logger = pino();
+// Redact secret-bearing fields from every log line. If a path doesn't
+// exist on a given log object pino just skips it, so these are cheap.
+// Covers our own structured logs AND any accidental full-request dumps.
+const logger = pino({
+  redact: {
+    paths: [
+      'cookie', 'cookies', 'Cookie',
+      'token', 'currentToken', 'Authorization', 'authorization',
+      'headers["x-suno-cookie"]', 'headers["X-Suno-Cookie"]',
+      'headers["x-api-key"]',      'headers["X-API-Key"]',
+      'headers.authorization',     'headers.Authorization',
+      'headers.cookie',            'headers.Cookie',
+      '*.cookie', '*.Cookie', '*.token', '*.authorization',
+      'req.headers["x-suno-cookie"]', 'req.headers.cookie',
+      'req.headers.authorization',
+    ],
+    censor: '[REDACTED]',
+  },
+});
 export const DEFAULT_MODEL = 'chirp-v3-5';
 
 export interface AudioInfo {
