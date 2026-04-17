@@ -349,7 +349,16 @@ class SunoApi {
     // `/` saves the redirect round-trip. (Classic UI also renders the
     // prompt on `/create` — but since the redesign serves the same form
     // at `/`, the homepage is the one path that works for both.)
-    await page.goto('https://suno.com/', { referer: 'https://www.google.com/', waitUntil: 'domcontentloaded', timeout: 0 });
+    //
+    // `waitUntil: 'load'` (not `domcontentloaded`) is deliberate: the
+    // prompt textarea uses react-textarea-autosize, which only applies
+    // its inline height styles once React has hydrated. Before
+    // hydration, the textarea has a zero-height bounding box — even a
+    // `force: true` click can't resolve a click position on that, and
+    // the whole scrape times out. Waiting for `load` blocks on the
+    // Next.js chunk downloads + execution, which is a decent proxy for
+    // "React has had a chance to hydrate."
+    await page.goto('https://suno.com/', { referer: 'https://www.google.com/', waitUntil: 'load', timeout: 0 });
 
     logger.info('Waiting for Suno interface to load');
     // Suno has shipped two distinct /create UIs we need to scrape:
