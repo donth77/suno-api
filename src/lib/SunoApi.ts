@@ -350,12 +350,23 @@ class SunoApi {
     await page.goto('https://suno.com/create', { referer: 'https://www.google.com/', waitUntil: 'domcontentloaded', timeout: 0 });
 
     logger.info('Waiting for Suno interface to load');
-    // /create's Song Description textarea has maxlength=500. The Simple
-    // tab also has a Lyrics textarea (different maxlength) and Styles
-    // textarea (maxlength=1000). The Sound description in the Sounds tab
-    // also has maxlength=500 but is in a hidden panel so :visible filters
-    // it out. `.first()` on the visible match = Song Description prompt.
-    const textarea = page.locator('textarea[maxlength="500"]:visible').first();
+    // Suno has shipped two distinct /create UIs we need to scrape:
+    //   (a) Classic form — Song Description has maxlength=500. Lyrics
+    //       (Simple tab) and Styles (maxlength=1000) also exist; the
+    //       Sounds-tab description shares maxlength=500 but lives in a
+    //       hidden panel so `:visible` filters it out.
+    //   (b) Chat-first redesign (2026) — a single prominent textarea with
+    //       placeholder "Chat to make music" and no maxlength attribute.
+    // The comma-separated selector matches either; `.first()` picks the
+    // top-most visible prompt input regardless of which UI is rolled out
+    // to this session (Suno A/B-tests these).
+    const promptSelector = [
+      'textarea[maxlength="500"]:visible',
+      'textarea[placeholder*="Chat" i]:visible',
+      'textarea[placeholder*="make music" i]:visible',
+      'textarea[placeholder*="describe" i]:visible',
+    ].join(', ');
+    const textarea = page.locator(promptSelector).first();
     await textarea.waitFor({ state: 'visible', timeout: 60000 });
 
     if (this.ghostCursorEnabled)
@@ -375,12 +386,14 @@ class SunoApi {
     }
     await textarea.type('Lorem ipsum', { delay: 80, timeout: 30000 });
 
-    // /create's "Create song" button (aria-label changed from "Create").
-    // Typing into the textarea enables it; Playwright's click waits for
-    // enabled state. The click triggers an hCaptcha challenge which is
-    // solved via 2Captcha → browser POSTs to the generate endpoint,
-    // which our outer `page.route` interceptor captures.
-    const button = page.getByRole('button', { name: 'Create song' });
+    // Submit button. Classic form labels this "Create song"; the
+    // chat-first 2026 redesign labels it just "Create" (type=submit).
+    // Match either with an anchored regex — typing into the textarea
+    // enables the button; Playwright's click waits for the enabled
+    // state. The click triggers an hCaptcha challenge which is solved
+    // via 2Captcha → browser POSTs to the generate endpoint, which our
+    // outer `page.route` interceptor captures.
+    const button = page.getByRole('button', { name: /^Create( song)?$/i });
     await button.click({ timeout: 15000 });
 
     const controller = new AbortController();
