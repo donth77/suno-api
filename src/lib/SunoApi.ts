@@ -344,10 +344,12 @@ class SunoApi {
     logger.info('CAPTCHA required. Launching browser...')
     const browser = await this.launchBrowser();
     const page = await browser.newPage();
-    // Go directly to /create. The landing-page Create button just
-    // navigates here anyway; cutting it out saves a step and lets us
-    // target /create's actual form directly.
-    await page.goto('https://suno.com/create', { referer: 'https://www.google.com/', waitUntil: 'domcontentloaded', timeout: 0 });
+    // On the 2026 chat-first redesign the prompt UI lives on the
+    // homepage itself; `/create` just 307s to `/`. Going straight to
+    // `/` saves the redirect round-trip. (Classic UI also renders the
+    // prompt on `/create` — but since the redesign serves the same form
+    // at `/`, the homepage is the one path that works for both.)
+    await page.goto('https://suno.com/', { referer: 'https://www.google.com/', waitUntil: 'domcontentloaded', timeout: 0 });
 
     logger.info('Waiting for Suno interface to load');
     // Suno has shipped two distinct /create UIs we need to scrape:
