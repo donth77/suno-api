@@ -361,10 +361,14 @@ class SunoApi {
     // top-most visible prompt input regardless of which UI is rolled out
     // to this session (Suno A/B-tests these).
     const promptSelector = [
+      // Stable semantic id on the 2026 chat-first redesign — prefer this.
+      '#simple-create-textarea:visible',
+      // Classic form's Song Description (pre-redesign).
       'textarea[maxlength="500"]:visible',
-      'textarea[placeholder*="Chat" i]:visible',
-      'textarea[placeholder*="make music" i]:visible',
+      // Copy-based fallbacks in case id or maxlength attrs drift.
       'textarea[placeholder*="describe" i]:visible',
+      'textarea[placeholder*="make music" i]:visible',
+      'textarea[placeholder*="Chat" i]:visible',
     ].join(', ');
     const textarea = page.locator(promptSelector).first();
     await textarea.waitFor({ state: 'visible', timeout: 60000 });
