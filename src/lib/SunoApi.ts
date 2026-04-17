@@ -390,7 +390,15 @@ class SunoApi {
         break;
       } catch (_) {}
     }
-    await textarea.type('Lorem ipsum', { delay: 80, timeout: 30000 });
+    // The 2026 chat-first textarea uses react-textarea-autosize: it starts
+    // at 24px and grows with content, which means Playwright's default
+    // actionability check on `.type()` keeps resetting the stability
+    // timer as the bounding box shifts during hydration. Force-click
+    // with `force: true` to skip stability / hit-testing, then drive
+    // keystrokes through the page keyboard (which goes to whatever is
+    // focused — the textarea we just clicked).
+    await textarea.click({ force: true, timeout: 10_000 });
+    await page.keyboard.type('Lorem ipsum', { delay: 80 });
 
     // Submit button. Classic form labels this "Create song"; the
     // chat-first 2026 redesign labels it just "Create" (type=submit).
